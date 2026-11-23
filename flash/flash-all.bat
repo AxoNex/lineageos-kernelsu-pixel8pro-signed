@@ -8,9 +8,9 @@ REM         package in the same directory, boot the device into bootloader mode,
 REM         then double-click this script.
 REM
 REM  Steps:
-REM    1. Verify the device is husky (Pixel 8 Pro)
-REM    2. Flash the hardware trust root (avb_custom_key) -- REQUIRED before relock
-REM    3. fastboot flashall to flash all partitions (android-info.txt + fastboot-info.txt)
+REM    1. Verify the device is husky - Pixel 8 Pro
+REM    2. Flash the hardware trust root avb_custom_key - REQUIRED before relock
+REM    3. fastboot flashall to flash all partitions
 REM
 REM  After flashing: fastboot reboot to confirm boot, then fastboot flashing lock.
 REM ============================================================================
@@ -30,7 +30,7 @@ fastboot devices -l
 
 for /f "tokens=2" %%a in ('fastboot getvar product 2^>^&1 ^| find "product:"') do set "product=%%a"
 if not "%product%" == "husky" (
-  echo Error: this package is for husky (Pixel 8 Pro), but device is %product%
+  echo Error: this package is for husky - Pixel 8 Pro - but device is %product%
   goto :exit
 )
 
@@ -50,7 +50,7 @@ echo.
 echo Flash complete.
 echo Next steps:
 echo   fastboot reboot          -- confirm the system boots
-echo   fastboot flashing lock   -- relock after confirming (trust root must be flashed)
+echo   fastboot flashing lock   -- relock after confirming
 
 :exit
 echo.
