@@ -2,7 +2,7 @@
 # ============================================================================
 #  05-package.sh —— 生成线刷包 + updates.json
 #
-#  - ota extract --fastboot : 生成线刷目录（含 android-info.txt/fastboot-info.txt）
+#  - ota extract --all --fastboot : 提取全部镜像 + 生成线刷目录（含 fastboot-info.txt）
 #  - 打包线刷 zip
 #  - 调 gen-updates-json.py 生成 updates.json（裸数组，LineageOS 24 格式）
 #  产物: $OUT_DIR/${UPSTREAM_VERSION}-fastboot.zip + $PAGES_DIR/updates.json
@@ -19,11 +19,13 @@ source "$WORK_DIR/upstream.env"
 AVB_PKMD="$KEYS_DIR/avb_pkmd.bin"
 
 # ---- 1. 提取线刷镜像 --------------------------------------------------------
-info "提取线刷镜像（--fastboot 生成 android-info.txt + fastboot-info.txt）"
+info "提取线刷镜像（--all 提取全部分区 + --fastboot 生成 fastboot-info.txt）"
 FASTBOOT_DIR="$OUT_DIR/fastboot"
 rm -rf "$FASTBOOT_DIR"
 mkdir -p "$FASTBOOT_DIR"
-"$AVBROOT_BIN" ota extract -i "$PATCHED_OTA" -d "$FASTBOOT_DIR" --fastboot
+# 必须用 --all：默认只提取"可能被补丁"的镜像(system+boot+vbmeta)，会漏掉
+# product/system_ext/vendor/system_dlkm/vendor_dlkm 等动态分区，导致线刷包不完整。
+"$AVBROOT_BIN" ota extract -i "$PATCHED_OTA" -d "$FASTBOOT_DIR" --all --fastboot
 
 # 加入 bootloader 信任根公钥 + 一键线刷脚本（脚本内含「刷入信任根」步骤）
 cp "$AVB_PKMD" "$FASTBOOT_DIR/avb_pkmd.bin"

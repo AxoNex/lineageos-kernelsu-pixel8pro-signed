@@ -18,6 +18,9 @@ REM ============================================================================
 REM cd to the script's directory so fastboot flashall finds the .img files
 cd /d "%~dp0"
 
+REM fastboot flashall requires ANDROID_PRODUCT_OUT to locate images + flash script
+set ANDROID_PRODUCT_OUT=%CD%
+
 where fastboot >nul 2>nul
 if %errorlevel% neq 0 (
   echo fastboot not found. Install platform-tools and add it to PATH.

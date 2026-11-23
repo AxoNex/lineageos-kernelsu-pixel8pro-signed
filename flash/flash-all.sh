@@ -18,6 +18,9 @@ set -e
 # cd to the script's directory so fastboot flashall finds the .img files
 cd "$(dirname "$0")"
 
+# fastboot flashall requires ANDROID_PRODUCT_OUT to locate the images + flash script
+export ANDROID_PRODUCT_OUT="$(pwd)"
+
 command -v fastboot >/dev/null 2>&1 || {
   echo "fastboot not found. Install platform-tools and add it to PATH."
   echo "https://developer.android.com/tools/releases/platform-tools"
