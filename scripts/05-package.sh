@@ -25,8 +25,10 @@ rm -rf "$FASTBOOT_DIR"
 mkdir -p "$FASTBOOT_DIR"
 "$AVBROOT_BIN" ota extract -i "$PATCHED_OTA" -d "$FASTBOOT_DIR" --fastboot
 
-# 加入 bootloader 信任根公钥（首次回锁用）
+# 加入 bootloader 信任根公钥 + 一键线刷脚本（脚本内含「刷入信任根」步骤）
 cp "$AVB_PKMD" "$FASTBOOT_DIR/avb_pkmd.bin"
+cp "$TOOLKIT_ROOT/flash/flash-all.sh" "$FASTBOOT_DIR/flash-all.sh"
+cp "$TOOLKIT_ROOT/flash/flash-all.bat" "$FASTBOOT_DIR/flash-all.bat"
 
 # ---- 2. 打包线刷 zip --------------------------------------------------------
 FASTBOOT_ZIP="$OUT_DIR/${UPSTREAM_VERSION}-fastboot.zip"

@@ -15,9 +15,13 @@ info "查询 LineageOS API: ${LINEAGE_API}"
 API_JSON="$(curl -fsSL --retry 3 "$LINEAGE_API")"
 
 # 取最新构建（数组第 0 项）
-UPSTREAM_VERSION="$(echo "$API_JSON" | jq -r '.[0].version')"
-UPSTREAM_DATETIME="$(echo "$API_JSON" | jq -r '.[0].datetime')"
-UPSTREAM_TYPE="$(echo "$API_JSON" | jq -r '.[0].type')"
+VERSION_MAJOR="$(echo "$API_JSON" | jq -r '.[0].version')"          # 24.0
+UPSTREAM_DATE="$(echo "$API_JSON" | jq -r '.[0].date')"             # 2026-11-20
+UPSTREAM_DATETIME="$(echo "$API_JSON" | jq -r '.[0].datetime')"     # unix 秒
+UPSTREAM_TYPE="$(echo "$API_JSON" | jq -r '.[0].type')"             # nightly
+
+# 精确到构建日期的版本号，如 24.0-20261120-NIGHTLY-husky（而非仅 24.0）
+UPSTREAM_VERSION="${VERSION_MAJOR}-${UPSTREAM_DATE//-/}-${UPSTREAM_TYPE^^}-${DEVICE_CODENAME}"
 
 # OTA 文件是 files[0]
 OTA_FILENAME="$(echo "$API_JSON" | jq -r '.[0].files[0].filename')"
@@ -27,7 +31,8 @@ OTA_SIZE="$(echo "$API_JSON" | jq -r '.[0].files[0].size')"
 OS_PATCH_LEVEL="$(echo "$API_JSON" | jq -r '.[0].files[0].os_patch_level // empty')"
 OS_SDK_LEVEL="$(echo "$API_JSON" | jq -r '.[0].files[0].os_sdk_level // empty')"
 
-[[ -n "$UPSTREAM_VERSION" && "$UPSTREAM_VERSION" != "null" ]] || { err "无法解析上游版本号"; exit 1; }
+[[ -n "$VERSION_MAJOR" && "$VERSION_MAJOR" != "null" ]] || { err "无法解析上游版本号"; exit 1; }
+[[ -n "$UPSTREAM_DATE" && "$UPSTREAM_DATE" != "null" ]] || { err "无法解析上游构建日期"; exit 1; }
 [[ -n "$OTA_URL" && "$OTA_URL" != "null" ]] || { err "上游未提供 OTA 下载地址"; exit 1; }
 
 # 是否已发布过该版本？（FORCE_BUILD=true 强制构建；gh 不可用时视为未发布）
