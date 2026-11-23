@@ -28,6 +28,10 @@ if [[ -n "${KEY_PASSPHRASE:-}" ]]; then
 fi
 
 info "ota patch: 替换 boot=blu_spark，替换 product=改过属性"
+# --clear-vbmeta-flags：官方 LineageOS 构建 vbmeta header flags=0x3
+#   (HASHTREE_DISABLED|VERIFICATION_DISABLED)，即关闭了 verified boot。
+#   回锁 bootloader 需要 verified boot 生效，故清零这些 flag 重新启用，
+#   再用 avb.key 重签整个信任链。
 "$AVBROOT_BIN" ota patch \
   -i "$OTA_ZIP" \
   -o "$PATCHED_OTA" \
@@ -36,6 +40,7 @@ info "ota patch: 替换 boot=blu_spark，替换 product=改过属性"
   --cert-ota "$OTA_CRT" \
   --prepatched "$BOOT_IMG" \
   --replace product "$PRODUCT_NEW_IMG" \
+  --clear-vbmeta-flags \
   "${PASS_AVB_ARG[@]}" "${PASS_OTA_ARG[@]}"
 
 info "校验补丁后 OTA 的签名"
