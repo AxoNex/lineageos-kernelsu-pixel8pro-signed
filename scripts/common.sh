@@ -64,6 +64,7 @@ resolve_paths() {
   mkdir -p "$WORK_DIR"
 
   export DOWNLOAD_DIR="$WORK_DIR/download"     # 下载的 OTA/内核/avbroot
+  export AVBROOT_BIN="$DOWNLOAD_DIR/avbroot"   # avbroot 可执行文件（各脚本共用，避免跨进程丢失）
   export KEYS_DIR="$WORK_DIR/keys"             # 签名密钥
   export EXTRACT_DIR="$WORK_DIR/extract"       # 从 OTA 解出的分区
   export MODIFY_DIR="$WORK_DIR/modify"         # 修改后的分区

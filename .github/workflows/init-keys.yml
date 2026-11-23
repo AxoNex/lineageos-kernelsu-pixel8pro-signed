@@ -38,3 +38,10 @@ jobs:
         run: bash scripts/init-keys.sh
         env:
           KEY_PASSPHRASE: ${{ github.event.inputs.passphrase }}
+
+      - name: 上传信任根公钥 avb_pkmd.bin
+        uses: actions/upload-artifact@v4
+        with:
+          name: avb_pkmd
+          path: .work/keys/avb_pkmd.bin
+          retention-days: 90

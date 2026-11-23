@@ -73,6 +73,11 @@ if [[ -n "${KEY_PASSPHRASE:-}" ]]; then
 else
   echo "  ② （未设置口令，密钥为明文，无需 KEY_PASSPHRASE）"
 fi
+echo "  ③ 信任根公钥 avb_pkmd.bin：已作为 Artifact 上传（也可用下面 base64 还原）"
+AVB_PKMD_B64="$(base64 -w0 "$AVB_PKMD" 2>/dev/null || base64 "$AVB_PKMD" | tr -d '\n')"
+echo "──────────────────── avb_pkmd.bin (base64) 开始 ────────────────────"
+echo "$AVB_PKMD_B64"
+echo "──────────────────── avb_pkmd.bin (base64) 结束 ────────────────────"
+echo "     本地还原：echo '<上面整段内容>' | base64 -d > avb_pkmd.bin"
 echo ""
-info "信任根公钥: $AVB_PKMD"
-info "首次刷机回锁 bootloader 的步骤见 docs/06-线刷与回锁.md"
+info "首次刷机回锁 bootloader 的步骤见 docs/04-线刷与回锁.md"
