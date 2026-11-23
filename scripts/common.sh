@@ -89,6 +89,7 @@ resolve_paths() {
   # avbroot 用 tempfile 库，尊重 TMPDIR（避免写入 RAM 型 /tmp 导致 OOM）
   export TMPDIR="$TMP_DIR"
 
-  export AVBROOT_URL="https://github.com/chenxiaolong/avbroot/releases/download/${AVBROOT_VERSION}/avbroot-${AVBROOT_VERSION}-x86_64-unknown-linux-gnu.zip"
+  # 注意：release tag 带 "v" 前缀（如 v3.39.1），而资产文件名不带（avbroot-3.39.1-...）
+  export AVBROOT_URL="https://github.com/chenxiaolong/avbroot/releases/download/v${AVBROOT_VERSION}/avbroot-${AVBROOT_VERSION}-x86_64-unknown-linux-gnu.zip"
   export LINEAGE_API="${LINEAGE_API_BASE}/${DEVICE_CODENAME}/builds"
 }
