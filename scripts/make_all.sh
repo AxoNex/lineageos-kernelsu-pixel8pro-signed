@@ -17,7 +17,7 @@ SKIP_CHECK=false
 [[ "${1:-}" == "--skip-check" ]] && SKIP_CHECK=true
 
 if [[ "$SKIP_CHECK" == "false" ]]; then
-  "$SCRIPT_DIR/00-check-upstream.sh"
+  bash "$SCRIPT_DIR/00-check-upstream.sh"
 fi
 
 SHOULD_BUILD="$(cat "$WORK_DIR/SHOULD_BUILD" 2>/dev/null || echo false)"
@@ -26,12 +26,13 @@ if [[ "$SHOULD_BUILD" != "true" ]]; then
   exit 0
 fi
 
-"$SCRIPT_DIR/01-download.sh"
-"$SCRIPT_DIR/02-keys.sh"
-"$SCRIPT_DIR/03-patch-product.sh"
-"$SCRIPT_DIR/04-patch-ota.sh"
-"$SCRIPT_DIR/05-package.sh"
-"$SCRIPT_DIR/06-release.sh"
+# 用 `bash` 显式调用，避免依赖脚本文件的可执行位（git 在 Windows 检出时可能丢失 +x）
+bash "$SCRIPT_DIR/01-download.sh"
+bash "$SCRIPT_DIR/02-keys.sh"
+bash "$SCRIPT_DIR/03-patch-product.sh"
+bash "$SCRIPT_DIR/04-patch-ota.sh"
+bash "$SCRIPT_DIR/05-package.sh"
+bash "$SCRIPT_DIR/06-release.sh"
 
 ok "全部流程完成 ✅"
 info "线刷包 : ${FASTBOOT_ZIP:-<见 .work/upstream.env>}"
