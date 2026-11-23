@@ -1,48 +1,49 @@
 #!/bin/sh
 # ============================================================================
-#  flash-all.sh —— 一键线刷脚本（Linux / macOS）
+#  flash-all.sh -- one-click flash script for Linux / macOS
 #
-#  用法：把本脚本与线刷包内的所有 .img 文件、avb_pkmd.bin 放在同一目录，
-#        设备进入 bootloader 后执行：  sh flash-all.sh
+#  Usage: put this script, all .img files and avb_pkmd.bin from the fastboot
+#         package in the same directory, boot the device into bootloader mode,
+#         then run:  sh flash-all.sh
 #
-#  流程：
-#    1. 校验设备为 husky（Pixel 8 Pro）
-#    2. 刷入硬件信任根公钥 avb_custom_key（回锁 bootloader 前必须）
-#    3. fastboot flashall 刷入所有分区（android-info.txt + fastboot-info.txt）
+#  Steps:
+#    1. Verify the device is husky (Pixel 8 Pro)
+#    2. Flash the hardware trust root (avb_custom_key) -- REQUIRED before relock
+#    3. fastboot flashall to flash all partitions (android-info.txt + fastboot-info.txt)
 #
-#  刷完先 fastboot reboot 开机确认正常，再手动 fastboot flashing lock 回锁。
+#  After flashing: fastboot reboot to confirm boot, then fastboot flashing lock.
 # ============================================================================
 set -e
 
-# 切到脚本所在目录，确保 fastboot flashall 能找到 .img 与 android-info.txt
+# cd to the script's directory so fastboot flashall finds the .img files
 cd "$(dirname "$0")"
 
 command -v fastboot >/dev/null 2>&1 || {
-  echo "fastboot 未找到，请先安装 platform-tools 并加入 PATH"
+  echo "fastboot not found. Install platform-tools and add it to PATH."
   echo "https://developer.android.com/tools/releases/platform-tools"
   exit 1
 }
 
-echo "可用设备："
+echo "Available devices:"
 fastboot devices -l
 
 product=$(fastboot getvar product 2>&1 | sed -n 's/^product:[[:space:]]*//p' | tr -d '\r')
 if [ "$product" != "husky" ]; then
-  echo "错误：此线刷包用于 husky（Pixel 8 Pro），当前设备是 ${product:-未知}"
+  echo "Error: this package is for husky (Pixel 8 Pro), but device is ${product:-unknown}"
   exit 1
 fi
 
 echo ""
-echo "=== 1/2 刷入硬件信任根公钥 (avb_custom_key) ==="
+echo "=== 1/2 Flash hardware trust root: avb_custom_key ==="
 fastboot erase avb_custom_key
 fastboot flash avb_custom_key avb_pkmd.bin
 
 echo ""
-echo "=== 2/2 刷入所有分区 (fastboot flashall) ==="
+echo "=== 2/2 Flash all partitions: fastboot flashall ==="
 fastboot flashall --skip-reboot
 
 echo ""
-echo "刷入完成。"
-echo "下一步："
-echo "  fastboot reboot           # 开机确认系统正常"
-echo "  fastboot flashing lock    # 确认无误后再回锁（务必已刷入信任根）"
+echo "Flash complete."
+echo "Next steps:"
+echo "  fastboot reboot          # confirm the system boots"
+echo "  fastboot flashing lock   # relock after confirming (trust root must be flashed)"
