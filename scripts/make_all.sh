@@ -1,46 +1,39 @@
 #!/usr/bin/env bash
 # ============================================================================
-#  一键总入口：依次执行 ①→⑦
-#  用法: ./scripts/make_all.sh
+#  make_all.sh —— 一键执行完整重打包流程
+#
+#  顺序: 00 检测上游 → 01 下载 → 02 恢复密钥 → 03 改 product
+#        → 04 重打包签名 → 05 线刷包+updates.json → 06 发布 Releases
+#
+#  参数: --skip-check  跳过 00 检测（CI 中已单独执行过检测时使用）
 # ============================================================================
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=common.sh
-source "$SCRIPT_DIR/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+
+step "Pixel 8 Pro ROM 一键重打包"
 resolve_paths
 
-echo
-echo "=============================================================="
-echo "  Pixel 8 Pro ($DEVICE_CODENAME) 自签名 ROM 一键制作"
-echo "  源码树 : $ANDROID_BUILD_TOP"
-echo "  输出目录: $OUT_DIR"
-echo "=============================================================="
-echo
+SKIP_CHECK=false
+[[ "${1:-}" == "--skip-check" ]] && SKIP_CHECK=true
 
-STAGES=(
-  "00-init-keys.sh"
-  "01-build-target-files.sh"
-  "02-sign-images.sh"
-  "03-make-fastboot-package.sh"
-  "04-make-ota.sh"
-  "05-setup-updater.sh"
-  "06-avb-custom-key.sh"
-)
+if [[ "$SKIP_CHECK" == "false" ]]; then
+  "$SCRIPT_DIR/00-check-upstream.sh"
+fi
 
-for s in "${STAGES[@]}"; do
-  echo
-  echo ">>>>>>>>>>>>>>>>>>>> 执行 $s <<<<<<<<<<<<<<<<<<<<"
-  bash "$SCRIPT_DIR/$s"
-done
+SHOULD_BUILD="$(cat "$WORK_DIR/SHOULD_BUILD" 2>/dev/null || echo false)"
+if [[ "$SHOULD_BUILD" != "true" ]]; then
+  ok "上游无新版本，本次跳过构建发布"
+  exit 0
+fi
 
-echo
-echo "=============================================================="
-ok "全部完成。成品输出于: $OUT_DIR"
-echo "  - 线刷包    : $FASTBOOT_DIR"
-echo "  - OTA 包    : $OTA_DIR"
-echo "  - 硬件信任根: $AVB_DIR"
-echo "  - 更新源    : $UPDATER_DIR"
-echo "=============================================================="
-echo
-echo "下一步: 参考 docs/05 与 windows/flash-all.* 刷机；"
-echo "        参考 $AVB_DIR/relock-bootloader.md 回锁 bootloader。"
+"$SCRIPT_DIR/01-download.sh"
+"$SCRIPT_DIR/02-keys.sh"
+"$SCRIPT_DIR/03-patch-product.sh"
+"$SCRIPT_DIR/04-patch-ota.sh"
+"$SCRIPT_DIR/05-package.sh"
+"$SCRIPT_DIR/06-release.sh"
+
+ok "全部流程完成 ✅"
+info "线刷包 : ${FASTBOOT_ZIP:-<见 .work/upstream.env>}"
+info "OTA 包 : ${PATCHED_OTA:-<见 .work/upstream.env>}"
+info "更新源 : $PAGES_DIR/updates.json"

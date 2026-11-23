@@ -1,0 +1,40 @@
+name: Init Signing Keys
+
+# ============================================================================
+#  一次性工作流：生成签名密钥 + 信任根，输出 SIGNING_KEYS 供手动存入 Secret。
+#
+#  运行后会打印 base64 编码的密钥 tarball，复制到：
+#    GitHub Secret「SIGNING_KEYS」
+#  若设置了口令，再复制口令到 Secret「KEY_PASSPHRASE」。
+#
+#  ⚠️ 密钥必须长期保留（丢失 = 无法签后续 OTA = 需解锁+清数据+换新钥）。
+# ============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      passphrase:
+        description: '密钥口令（留空 = 明文密钥）'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  init-keys:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl unzip
+
+      - name: 生成密钥并打印 SIGNING_KEYS
+        run: bash scripts/init-keys.sh
+        env:
+          KEY_PASSPHRASE: ${{ github.event.inputs.passphrase }}

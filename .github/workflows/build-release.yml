@@ -1,134 +1,78 @@
-# ============================================================================
-#  Pixel 8 Pro (husky) LineageOS + blu_spark 自动构建与发布
-#
-#  触发:
-#    - schedule          : 定期自动（默认每周日 02:00 UTC，见下方 cron）
-#    - workflow_dispatch : 手动触发（可覆盖版本类型 / blu_spark 分支等）
-#
-#  运行环境: 需要 self-hosted runner（完整 LineageOS 构建需 ~250GB 磁盘 /
-#            32GB+ 内存 / 数小时）。用仓库变量 RUNNER_LABELS 指定标签。
-#
-#  发布到 GitHub Releases:
-#    - 线刷包 (factory zip)  - OTA 更新包  - 硬件信任根 avb_custom_key.bin
-#
-#  更新服务器: 自动部署 updates.json 到 GitHub Pages
-#    - 设备端属性 lineage.updater.uri = https://<owner>.github.io/<repo>/updates.json
-#    - 该地址由仓库自动派生，无需手填（见 env.GITHUB_REPO）
-# ============================================================================
+name: Build & Release
 
-name: Build & Release ROM
+# ============================================================================
+#  定期 + 手动触发：检测上游新版本 → 解包 → 加 lineage.updater.uri
+#  → 替换 blu_spark 内核 → avbroot 重打包签名 → 发布 Releases + GitHub Pages
+#
+#  全程运行在【免费版 ubuntu-latest runner】上（只解包/改 build.prop/重打包，
+#  不做完整 AOSP 源码构建，磁盘/内存需求远低于源码路线）。
+# ============================================================================
 
 on:
   schedule:
-    # 每周日 02:00 UTC（可自行修改）
-    - cron: "0 2 * * 0"
+    # 每周日 02:00 UTC 自动检测（LineageOS husky nightly 节奏）
+    - cron: '0 2 * * 0'
   workflow_dispatch:
     inputs:
-      sync_upstream:
-        description: "repo sync 最新上游 (true/false)"
-        type: boolean
-        default: true
-      release_type:
-        description: "版本类型（对应 ro.lineage.releasetype）"
-        type: choice
-        required: true
-        default: "UNOFFICIAL"
-        options:
-          - UNOFFICIAL
-          - NIGHTLY
-          - SNAPSHOT
-          - EXPERIMENTAL
-      bluspark_branch:
-        description: "blu_spark 内核分支（留空用默认）"
-        type: string
-        required: false
-        default: ""
-      clean_build:
-        description: "清空 out 目录后重建 (true/false)"
+      force:
+        description: '强制构建（忽略「该版本已发布」检测）'
         type: boolean
         default: false
 
-env:
-  # ====================== 配置区 ======================
-  # 1) GitHub 仓库地址（留空自动取当前仓库 owner/repo，一般无需改）
-  #    → 更新源自动派生为 https://<owner>.github.io/<repo>/updates.json
-  GITHUB_REPO: ${{ github.repository }}
-
-  # 2) 设备与上游版本
-  DEVICE_CODENAME: husky                     # Pixel 8 Pro 代号
-  LINEAGE_BRANCH: lineage-24.0               # LineageOS 分支
-  LINEAGE_MAJOR_MINOR: "24.0"                # 主版本号（兜底用）
-  LINEAGE_MANIFEST: https://github.com/LineageOS/android.git
-
-  # 3) blu_spark 内核（-los 后缀 = LineageOS 专用分支）
-  BLUSPARK_REPO: https://github.com/engstk/gs
-  BLUSPARK_BRANCH: ${{ inputs.bluspark_branch || 'blu_spark-17-los' }}
-  BLUSPARK_INJECT: "true"
-  # BLUSPARK_KERNEL_DIR: /opt/lineage/kernel/google/zuma   # 可手动指定内核目录
-
-  # 4) 构建目录（self-hosted runner 上需留足够空间）
-  ANDROID_BUILD_TOP: /opt/lineage
-  OUT_DIR: /opt/lineage/release
-
-  # 5) 签名与 AVB
-  KEYS_MODE: template
-  WITH_AVB: "true"
-
-  # 6) 版本类型
-  RELEASE_TYPE: ${{ inputs.release_type || 'UNOFFICIAL' }}
-  # ==================================================
-
 permissions:
-  contents: write    # 创建 Release / 上传资产
-  pages: write       # 部署 GitHub Pages
-  id-token: write    # Pages 部署认证
-  actions: read
+  contents: write      # 创建/上传 Release
+  pages: write         # 部署 GitHub Pages（updates.json）
+  id-token: write      # Pages 需要 OIDC 认证
+
+concurrency:
+  group: build-release
+  cancel-in-progress: false
+
+env:
+  SIGNING_KEYS: ${{ secrets.SIGNING_KEYS }}
+  KEY_PASSPHRASE: ${{ secrets.KEY_PASSPHRASE }}
 
 jobs:
-  build-and-release:
-    # self-hosted runner 标签：设置仓库变量 RUNNER_LABELS 为 JSON 数组，
-    # 例: ["self-hosted","linux","x64","android-build"]（未设置则用下方默认）
-    runs-on: ${{ fromJSON(vars.RUNNER_LABELS || '["self-hosted","linux","android-build"]') }}
-    timeout-minutes: 1440
-
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
     steps:
-      - name: Checkout toolkit
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Cache ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ccache-${{ env.DEVICE_CODENAME }}-${{ github.ref_name }}
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            curl unzip jq zip python3 e2fsprogs
 
-      - name: Setup build environment
+      - name: 检测上游新版本
+        id: check
+        run: |
+          bash scripts/00-check-upstream.sh
+          echo "should_build=$(cat .work/SHOULD_BUILD)" >> "$GITHUB_OUTPUT"
         env:
-          SIGNING_KEYS: ${{ secrets.SIGNING_KEYS }}
-          SYNC_UPSTREAM: ${{ inputs.sync_upstream || true }}
-          CLEAN_BUILD: ${{ inputs.clean_build || false }}
-        run: bash scripts/ci/setup-build.sh
+          FORCE_BUILD: ${{ github.event.inputs.force || 'false' }}
+          GH_TOKEN: ${{ github.token }}
 
-      - name: Build + sign + package
-        run: bash scripts/make_all.sh
-
-      - name: Generate updates.json + publish release
+      - name: 下载 → 改 product → 重打包 → 签名 → 打包 → 发布
+        if: steps.check.outputs.should_build == 'true'
+        run: bash scripts/make_all.sh --skip-check
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash scripts/ci/release.sh
 
-      - name: Configure GitHub Pages
+      - name: 配置 Pages
+        if: steps.check.outputs.should_build == 'true'
         uses: actions/configure-pages@v5
 
-      - name: Upload Pages artifact
+      - name: 上传 updates.json 到 Pages
+        if: steps.check.outputs.should_build == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: _pages
+          path: .work/pages
 
-      - name: Deploy to GitHub Pages
+      - name: 部署 Pages
+        if: steps.check.outputs.should_build == 'true'
         id: deployment
         uses: actions/deploy-pages@v4
-
-      - name: Print result
-        run: |
-          echo "Release: https://github.com/${{ github.repository }}/releases"
-          echo "Update server: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/updates.json"
