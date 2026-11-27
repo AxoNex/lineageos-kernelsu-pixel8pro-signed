@@ -2,7 +2,7 @@
   <h1>Modified LineageOS for Pixel 8 Pro</h1>
   <p>基于LineageOS官方构建的KernelSU+自定义信任根的完整方案</p>
 
-  [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/AxoNex/lineageos-kernelsu-pixel8pro-signed/ci.yml)](https://github.com/AxoNex/lineageos-kernelsu-pixel8pro-signed/actions)
+  [![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/AxoNex/lineageos-kernelsu-pixel8pro-signed/build-release.yml)](https://github.com/AxoNex/lineageos-kernelsu-pixel8pro-signed/actions)
   [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/AxoNex/lineageos-kernelsu-pixel8pro-signed/total)](https://github.com/AxoNex/lineageos-kernelsu-pixel8pro-signed/releases)
   [![License](https://img.shields.io/github/license/AxoNex/lineageos-kernelsu-pixel8pro-signed)](LICENSE)
 
