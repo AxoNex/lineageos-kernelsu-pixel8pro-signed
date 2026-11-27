@@ -18,6 +18,10 @@ on:
         description: '强制构建（忽略「该版本已发布」检测）'
         type: boolean
         default: false
+      upstream_version:
+        description: '指定要打包的上游版本（如 20261120 / 24.0-20261120 / 24.0-20261120-NIGHTLY-husky；留空=最新）'
+        type: string
+        default: ''
 
 permissions:
   contents: write      # 创建/上传 Release
@@ -51,9 +55,19 @@ jobs:
         id: check
         run: |
           bash scripts/00-check-upstream.sh
-          echo "should_build=$(cat .work/SHOULD_BUILD)" >> "$GITHUB_OUTPUT"
+          SHOULD="$(cat .work/SHOULD_BUILD)"
+          echo "should_build=$SHOULD" >> "$GITHUB_OUTPUT"
+          {
+            echo "### 上游检测结果"
+            echo ""
+            echo "- SHOULD_BUILD: \`$SHOULD\`"
+            if [ -f .work/upstream.env ]; then
+              grep -E '^(UPSTREAM_VERSION|OTA_FILENAME)=' .work/upstream.env || true
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
         env:
           FORCE_BUILD: ${{ github.event.inputs.force || 'false' }}
+          TARGET_VERSION: ${{ github.event.inputs.upstream_version }}
           GH_TOKEN: ${{ github.token }}
 
       - name: 下载 → 改 product → 重打包 → 签名 → 打包 → 发布
