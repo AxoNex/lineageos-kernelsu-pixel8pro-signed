@@ -27,6 +27,10 @@
 5. 安装 [KSU mod](https://github.com/engstk/KernelSU/releases) 来使用 `KernelSU`
 6. 谨慎选择模块避免系统文件修改
 
+## 额外信息
+
+关于此项目源代码的详细说明，请见 [PROJECT.md](PROJECT.md)
+
 ## 许可
 
 本项目采用 [Apache License 2.0](LICENSE)。blu_spark 内核与 LineageOS 为各自项目所有，本工具仅下载引用、不二次分发其源码。

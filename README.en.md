@@ -27,6 +27,10 @@ Based on **official LineageOS builds + the blu_spark kernel**, this project uses
 5. Install the [KSU mod](https://github.com/engstk/KernelSU/releases) to use `KernelSU`
 6. Choose modules carefully to avoid modifying system files
 
+## Additional Information
+
+For a detailed description of this project's source code, please see [PROJECT.md](PROJECT.md).
+
 ## License
 
 This project is licensed under the [Apache License 2.0](LICENSE). The blu_spark kernel and LineageOS are owned by their respective projects. This tool only downloads and references them and does not redistribute their source code.
