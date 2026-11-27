@@ -27,6 +27,11 @@
 5. 安装 [KSU mod](https://github.com/engstk/KernelSU/releases) 来使用 `KernelSU`
 6. 谨慎选择模块避免系统文件修改
 
+> [!NOTE]
+> **关于 OTA 更新**
+> 截至本文档更新，使用系统自带更新器更新系统，仅可使用 `流式在线更新` 模式，关闭此功能或导入本地OTA包均会导致更新失败
+
+
 ## 额外信息
 
 关于此项目源代码的详细说明，请见 [PROJECT.md](PROJECT.md)
