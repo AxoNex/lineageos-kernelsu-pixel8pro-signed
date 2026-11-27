@@ -79,10 +79,9 @@ def _property_files_from_zip(ota_path: str):
     """回退方案：自行累计每个条目的数据偏移。
 
     ⚠️ 逐条累加时**必须计入条目之后的 16 字节 data descriptor**
-    （`PK\\x07\\x08` + crc + csize + usize）。avbroot 即使在
-    `--zip-mode seekable` 下也仍会写这些描述符（只是把本地头 flags 清零），
-    漏算就会出现「真实 3250 被算成 3218」的偏差，设备更新器照着读会拿到
-    全零，报 `invalid delta magic: 00000000` /
+    （`PK\\x07\\x08` + crc + csize + usize）。avbroot 产出的 zip 每个条目
+    后面都有这个块，漏算就会出现「真实 3250 被算成 3218」的偏差，设备
+    更新器照着读会拿到全零，报 `invalid delta magic: 00000000` /
     `kDownloadInvalidMetadataMagicString (21)`。
     """
     tokens = []

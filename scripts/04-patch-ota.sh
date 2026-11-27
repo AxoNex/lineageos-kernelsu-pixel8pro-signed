@@ -32,10 +32,6 @@ info "ota patch: 替换 boot=blu_spark，替换 product=改过属性，替换 sy
 #   (HASHTREE_DISABLED|VERIFICATION_DISABLED)，即关闭了 verified boot。
 #   回锁 bootloader 需要 verified boot 生效，故清零这些 flag 重新启用，
 #   再用 avb.key 重签整个信任链。
-# --zip-mode seekable：让本地文件头里的 crc / 大小字段填真实值（streaming 模式
-#   会把它们全部置 0，只靠条目后的 data descriptor 传递），对解析器更友好。
-#   ⚠️ 注意：seekable 模式**并不会**去掉条目后那 16 字节 data descriptor 块，
-#   所以"描述符是否存在"绝不能作为偏移是否正确的判据（详见下方校验说明）。
 PATCH_LOG="$OUT_DIR/avbroot-ota-patch.log"
 "$AVBROOT_BIN" ota patch \
   -i "$OTA_ZIP" \
@@ -46,7 +42,6 @@ PATCH_LOG="$OUT_DIR/avbroot-ota-patch.log"
   --prepatched "$BOOT_IMG" \
   --replace product "$PRODUCT_NEW_IMG" \
   --clear-vbmeta-flags \
-  --zip-mode seekable \
   "${PASS_AVB_ARG[@]}" "${PASS_OTA_ARG[@]}" 2>&1 | tee "$PATCH_LOG"
 
 # 关键校验：avbroot 必须真的把 system 分区的 otacerts.zip 换成我们的证书。
@@ -66,12 +61,13 @@ info "校验补丁后 OTA 的签名"
 "$AVBROOT_BIN" ota verify -i "$PATCHED_OTA" --cert-ota "$OTA_CRT" --public-key-avb "$AVB_PKMD"
 
 # ---- 产物级校验：payload 偏移 ----
-# 【实测根因 2026-11-27】条目之间始终存在 16 字节 data descriptor（`PK\x07\x08`），
-# 即使加了 --zip-mode seekable 也一样（只是本地头 flags 清零）。所以"有无描述符"
-# 不能作为判据。真正关键的是：updates.json 的 ota_property_files 必须直接取自 zip
-# 内 META-INF/com/android/metadata 的真实偏移，不能自行逐条累计——漏算描述符会让
-# 真实 3250 变成 3218，设备更新器照着读得到全零，报
+# 【实测根因 2026-11-27】avbroot 产出的 zip，每个条目后面都跟着 16 字节
+# data descriptor（`PK\x07\x08` + crc + csize + usize），这是它的固定行为，
+# 与 zip 模式无关。逐条累加本地头时若漏算这 16 字节，payload.bin 的真实偏移
+# 3250 会被算成 3218，设备更新器照着读得到全零，报
 #   invalid delta magic: 00000000 / kDownloadInvalidMetadataMagicString (21)
+# 因此 updates.json 的 ota_property_files 必须直接取自 zip 内
+# META-INF/com/android/metadata 的真实偏移，不能自行累加。
 # 该自检已内置在 gen-updates-json.py（声明偏移处必须是 CrAU，否则 exit 1）。
 
 # 附加校验：ota-property-files 声明的 payload 偏移确实指向 CrAU 魔数
