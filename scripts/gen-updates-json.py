@@ -41,13 +41,53 @@ def sha256_of(path: str) -> str:
 
 
 def ota_property_files(ota_path: str):
-    """计算 'path:offset:size' 逗号串，复刻 Updater Utils.getZipEntryOffset 逻辑。
+    """返回 (value, source)。
 
-    返回 None 表示无法计算（此时省略该字段，Updater 会回退整包下载安装）。
+    优先直接读 OTA 内 META-INF/com/android/metadata 的 `ota-property-files=`
+    行——这个值由打包器（avbroot / ota_from_target_files）按真实 zip 布局算出，
+    与官方 LineageOS 服务器下发的 ota_property_files 完全一致。自行累计偏移
+    极易算错，见下方 _property_files_from_zip 的注释。
+
+    返回 (None, None) 表示两种方式都失败（此时省略该字段，Updater 回退
+    整包下载安装）。
+    """
+    from_meta = _property_files_from_metadata(ota_path)
+    if from_meta:
+        return from_meta, "META-INF/com/android/metadata"
+    computed = _property_files_from_zip(ota_path)
+    if computed:
+        return computed, "自行扫描 zip 本地头"
+    return None, None
+
+
+def _property_files_from_metadata(ota_path: str):
+    try:
+        with zipfile.ZipFile(ota_path) as zf:
+            raw = zf.read("META-INF/com/android/metadata")
+    except Exception as exc:  # noqa: BLE001
+        sys.stderr.write(f"[WARN] 读取 META-INF/com/android/metadata 失败: {exc}\n")
+        return None
+    for line in raw.decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if line.startswith("ota-property-files="):
+            value = line.split("=", 1)[1].strip()
+            return value or None
+    return None
+
+
+def _property_files_from_zip(ota_path: str):
+    """回退方案：自行累计每个条目的数据偏移。
+
+    ⚠️ 逐条累加时**必须计入条目之后的 16 字节 data descriptor**
+    （`PK\\x07\\x08` + crc + csize + usize）。avbroot 即使在
+    `--zip-mode seekable` 下也仍会写这些描述符（只是把本地头 flags 清零），
+    漏算就会出现「真实 3250 被算成 3218」的偏差，设备更新器照着读会拿到
+    全零，报 `invalid delta magic: 00000000` /
+    `kDownloadInvalidMetadataMagicString (21)`。
     """
     tokens = []
     try:
-        with zipfile.ZipFile(ota_path) as zf:
+        with zipfile.ZipFile(ota_path) as zf, open(ota_path, "rb") as fh:
             offset = 0
             for info in zf.infolist():
                 name_len = len(info.filename.encode("utf-8"))
@@ -56,10 +96,45 @@ def ota_property_files(ota_path: str):
                 if info.filename in AB_PATHS:
                     tokens.append(f"{info.filename}:{offset}:{info.compress_size}")
                 offset += info.compress_size
+                if info.flag_bits & 0x08:
+                    offset += 16
+                else:
+                    fh.seek(offset)
+                    if fh.read(4) == b"PK\x07\x08":
+                        offset += 16
     except Exception as exc:  # noqa: BLE001
         sys.stderr.write(f"[WARN] 无法计算 ota_property_files: {exc}\n")
         return None
     return ",".join(tokens) if tokens else None
+
+
+def verify_payload_offset(ota_path: str, opf: str) -> bool:
+    """确认 ota_property_files 里 payload.bin 的偏移处确实是 CrAU 魔数。
+
+    这是「设备更新器不会读到全零」的唯一可靠判据——不通过就直接让构建失败，
+    绝不放行一个装不上的包。
+    """
+    for token in opf.split(","):
+        parts = token.split(":")
+        if len(parts) != 3 or parts[0] != "payload.bin":
+            continue
+        try:
+            off = int(parts[1])
+        except ValueError:
+            continue
+        with open(ota_path, "rb") as f:
+            f.seek(off)
+            magic = f.read(4)
+        if magic != b"CrAU":
+            sys.stderr.write(
+                f"[ERROR] ota_property_files 声明 payload.bin 位于偏移 {off}，"
+                f"但该处是 {magic!r}（应为 b'CrAU'）。\n"
+                f"        设备更新器会读到错误数据，报 "
+                f"kDownloadInvalidMetadataMagicString (21)。\n"
+            )
+            return False
+        return True
+    return True
 
 
 def main() -> None:
@@ -81,7 +156,9 @@ def main() -> None:
     size = os.path.getsize(args.ota)
     digest = sha256_of(args.ota)
     dt = args.datetime if args.datetime else int(time.time())
-    opf = ota_property_files(args.ota)
+    opf, opf_source = ota_property_files(args.ota)
+    if opf and not verify_payload_offset(args.ota, opf):
+        sys.exit(1)
 
     file_entry = {
         "filename": os.path.basename(args.ota),
@@ -116,7 +193,7 @@ def main() -> None:
     print(f"       version={args.version}  type={args.type}")
     print(f"       size={size}  sha256={digest}")
     if opf:
-        print(f"       ota_property_files={opf}")
+        print(f"       ota_property_files ({opf_source}) = {opf}")
     else:
         print("       (未生成 ota_property_files，Updater 将整包下载安装)")
 
