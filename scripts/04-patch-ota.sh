@@ -32,6 +32,10 @@ info "ota patch: 替换 boot=blu_spark，替换 product=改过属性，替换 sy
 #   (HASHTREE_DISABLED|VERIFICATION_DISABLED)，即关闭了 verified boot。
 #   回锁 bootloader 需要 verified boot 生效，故清零这些 flag 重新启用，
 #   再用 avb.key 重签整个信任链。
+# --zip-mode seekable：默认的 streaming 模式会写入 zip data descriptor；
+#   部分消费端（含某些设备的更新器 zip 解析）会把 payload.bin 的字节偏移算错，
+#   导致从错误偏移读到全零、update_engine 报 kDownloadInvalidMetadataMagicString(21)。
+#   seekable 模式不写 data descriptor，偏移声明与真实字节位置一致，兼容性更好。
 PATCH_LOG="$OUT_DIR/avbroot-ota-patch.log"
 "$AVBROOT_BIN" ota patch \
   -i "$OTA_ZIP" \
@@ -42,6 +46,7 @@ PATCH_LOG="$OUT_DIR/avbroot-ota-patch.log"
   --prepatched "$BOOT_IMG" \
   --replace product "$PRODUCT_NEW_IMG" \
   --clear-vbmeta-flags \
+  --zip-mode seekable \
   "${PASS_AVB_ARG[@]}" "${PASS_OTA_ARG[@]}" 2>&1 | tee "$PATCH_LOG"
 
 # 关键校验：avbroot 必须真的把 system 分区的 otacerts.zip 换成我们的证书。
@@ -59,6 +64,58 @@ ok "已确认 system 的 otacerts.zip 已替换为我们的 OTA 证书"
 
 info "校验补丁后 OTA 的签名"
 "$AVBROOT_BIN" ota verify -i "$PATCHED_OTA" --cert-ota "$OTA_CRT" --public-key-avb "$AVB_PKMD"
+
+# ---- 产物级校验：zip 内不得含 data descriptor ----
+# 【实测根因】设备端 LineageOS 更新器会自己按 zip 本地头逐条累计出
+# payload.bin 的字节偏移（不直接用 ota-property-files 里那个数）。
+# avbroot 默认的 streaming zip 模式会给每个条目追加 16 字节 data descriptor，
+# 并把本地头里的 crc / 压缩后大小 / 原始大小全部置 0。更新器累计时没算这
+# 16 字节，于是偏移少了 16×(payload.bin 之前的条目数)，正好落进 payload.bin
+# 本地头里被置 0 的几个字段 → 读到 "00 00 00 00"，update_engine 报：
+#   invalid delta magic: 00000000  Expected: 43724155
+#   ErrorCode::kDownloadInvalidMetadataMagicString (21)
+# 实测：一版 zip 真实偏移 3250，更新器用了 3218，差额 32 = 2×16（两个 data descriptor）。
+# 用 seekable 模式（不写 data descriptor）即可避免。
+info "校验产物 OTA：zip 内不得含 data descriptor"
+DD_ENTRIES="$(python3 - "$PATCHED_OTA" <<'PY'
+import struct, sys
+path = sys.argv[1]
+with open(path, 'rb') as f:
+    data = f.read(4 * 1024 * 1024)  # 前 4MB 足以覆盖所有本地文件头
+bad, i = [], 0
+while True:
+    i = data.find(b'PK\x03\x04', i)
+    if i < 0 or i + 30 > len(data):
+        break
+    flags = struct.unpack_from('<H', data, i + 6)[0]
+    nlen = struct.unpack_from('<H', data, i + 26)[0]
+    name = data[i + 30:i + 30 + nlen].decode('ascii', 'replace')
+    if flags & 0x08:
+        bad.append(name)
+    i += 4
+print(','.join(bad))
+PY
+)"
+if [[ -n "$DD_ENTRIES" ]]; then
+  err "zip 含 data descriptor 的条目：$DD_ENTRIES"
+  err "设备更新器会算错 payload.bin 偏移，报 kDownloadInvalidMetadataMagicString(21)。"
+  err "必须用 --zip-mode seekable 重新打包。"
+  exit 1
+fi
+ok "zip 内无 data descriptor（seekable 模式）"
+
+# 附加校验：ota-property-files 声明的 payload 偏移确实指向 CrAU 魔数
+META_TXT="$(unzip -p "$PATCHED_OTA" 'META-INF/com/android/metadata' 2>/dev/null || true)"
+DECL_OFF="$(printf '%s\n' "$META_TXT" | tr -d '\r' \
+            | grep -oE 'payload\.bin:[0-9]+' | head -n1 | cut -d: -f2 || true)"
+if [[ -n "$DECL_OFF" ]]; then
+  DECL_MAGIC="$(od -An -tx1 -j "$DECL_OFF" -N 4 "$PATCHED_OTA" 2>/dev/null | tr -d ' \n' || true)"
+  if [[ "$DECL_MAGIC" != "43724155" ]]; then
+    err "ota-property-files 声明偏移 $DECL_OFF 处不是 CrAU（读到 ${DECL_MAGIC:-空}）"
+    exit 1
+  fi
+  ok "ota-property-files 声明偏移 $DECL_OFF 处为 CrAU"
+fi
 
 # ---- 产物级校验：直接确认 system 分区里的 otacerts.zip 就是我们的证书 ----
 # 上面那条日志断言只能证明「avbroot 替换了某个它认出来的 otacerts.zip」，
