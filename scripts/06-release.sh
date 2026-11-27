@@ -17,12 +17,17 @@ AVB_PKMD="$KEYS_DIR/avb_pkmd.bin"
 GH_REPO_ARG=()
 [[ -n "${GITHUB_REPOSITORY:-}" ]] && GH_REPO_ARG=(--repo "$GITHUB_REPOSITORY")
 
+# 证书指纹清单（由 04 生成）：方便随时比对设备上实际信任的 otacerts
+EXTRA_ASSETS=()
+[[ -f "$OUT_DIR/otacert-fingerprints.txt" ]] && EXTRA_ASSETS+=("$OUT_DIR/otacert-fingerprints.txt")
+
 if gh release view "$UPSTREAM_VERSION" "${GH_REPO_ARG[@]}" >/dev/null 2>&1; then
   info "Release ${UPSTREAM_VERSION} 已存在，追加/覆盖资产"
   gh release upload "$UPSTREAM_VERSION" \
     "$PATCHED_OTA" \
     "$FASTBOOT_ZIP" \
     "$AVB_PKMD#avb_pkmd.bin" \
+    "${EXTRA_ASSETS[@]}" \
     --clobber "${GH_REPO_ARG[@]}"
 else
   info "创建 Release ${UPSTREAM_VERSION}"
@@ -30,6 +35,7 @@ else
     "$PATCHED_OTA" \
     "$FASTBOOT_ZIP" \
     "$AVB_PKMD#avb_pkmd.bin" \
+    "${EXTRA_ASSETS[@]}" \
     --title "$UPSTREAM_VERSION" \
     --notes "自签名 LineageOS 构建（blu_spark 内核 + 自定义更新源）
 
